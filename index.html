@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bhrama</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- HOME PAGE -->
+  <div id="home-page" class="page active">
+    <div class="home-bg"></div>
+    <div class="home-content">
+      <h1 class="title">Bhrama</h1>
+      <p class="subtitle">AI-Powered CAD &amp; Real-World Physics Modeling</p>
+      <button class="btn-primary" id="new-project-btn">
+        <span class="btn-icon">+</span> New Project
+      </button>
+      <div class="recent-section" id="recent-section" style="display:none">
+        <p class="recent-label">Recent Projects</p>
+        <ul class="recent-list" id="recent-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- WORKSPACE PAGE -->
+  <div id="workspace-page" class="page">
+    <header class="ws-header">
+      <button class="back-btn" id="back-btn">← Back</button>
+      <span class="project-name" id="project-name">Untitled</span>
+      <nav class="tab-bar">
+        <button class="tab active" data-tab="generate">Generate</button>
+        <button class="tab"        data-tab="edit">Edit</button>
+        <button class="tab"        data-tab="apply">Apply</button>
+      </nav>
+    </header>
+
+    <div class="ws-body">
+
+      <!-- AI PANEL -->
+      <aside class="ai-panel">
+
+        <div class="tab-content active" id="tab-generate">
+          <h3 class="panel-title">Generate</h3>
+          <p class="panel-desc">Describe what you want to create. Bhrama will build a physics-accurate CAD model from your prompt.</p>
+          <textarea class="ai-input" id="input-generate"
+            placeholder="e.g. A steel I-beam bridge 50 m long, rated for 200 tons, with suspension cables…"></textarea>
+          <button class="btn-action" data-action="generate">Generate Model</button>
+          <div class="status-bar" id="status-generate"></div>
+        </div>
+
+        <div class="tab-content" id="tab-edit">
+          <h3 class="panel-title">Edit</h3>
+          <p class="panel-desc">Describe changes to the current model. AI will adjust geometry, materials, and constraints.</p>
+          <textarea class="ai-input" id="input-edit"
+            placeholder="e.g. Increase wall thickness by 20 %, add a 2 m door on the north face…"></textarea>
+          <button class="btn-action" data-action="edit">Apply Edits</button>
+          <div class="status-bar" id="status-edit"></div>
+        </div>
+
+        <div class="tab-content" id="tab-apply">
+          <h3 class="panel-title">Apply</h3>
+          <p class="panel-desc">Define real-world conditions and physics laws to simulate against this model.</p>
+          <textarea class="ai-input" id="input-apply"
+            placeholder="e.g. Wind load 120 km/h from the west, seismic activity Richter 6.5…"></textarea>
+          <button class="btn-action" data-action="apply">Run Simulation</button>
+          <div class="status-bar" id="status-apply"></div>
+        </div>
+
+      </aside>
+
+      <!-- 3D VIEWPORT -->
+      <div class="viewport" id="viewport">
+        <canvas id="three-canvas"></canvas>
+        <div class="vp-overlay">
+          <span class="vp-label">3D Viewport</span>
+          <div class="vp-controls">
+            <button class="vp-btn" id="vp-perspective" title="Perspective">Persp</button>
+            <button class="vp-btn" id="vp-top"         title="Top view">Top</button>
+            <button class="vp-btn" id="vp-front"       title="Front view">Front</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
