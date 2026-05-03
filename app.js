@@ -19,14 +19,27 @@ const state = {
 // ══════════════════════════════════════════════════════
 class EditableMesh {
   constructor() {
-    this.pos   = [];        // flat [x,y,z, x,y,z, ...]
-    this.idx   = [];        // flat triangle indices
-    this.sel   = new Set(); // selected vertex indices
-    this.group = new THREE.Group();
-    this.solid = null;
-    this.wire  = null;
-    this.pts   = null;
-    this.inEdit = false;
+    this.pos     = [];
+    this.idx     = [];
+    this.sel     = new Set();
+    this.history = [];      // undo stack
+    this.group   = new THREE.Group();
+    this.solid   = null;
+    this.wire    = null;
+    this.pts     = null;
+    this.inEdit  = false;
+  }
+
+  snapshot() {
+    this.history.push({ pos: [...this.pos], idx: [...this.idx] });
+    if (this.history.length > 30) this.history.shift();
+  }
+
+  undo() {
+    if (!this.history.length) return;
+    const s = this.history.pop();
+    this.pos = s.pos; this.idx = s.idx; this.sel.clear();
+    this._rebuild();
   }
 
   loadGroup(src) {
@@ -136,6 +149,7 @@ class EditableMesh {
 
   extrude(amount = 0.4) {
     if (!this.sel.size) return;
+    this.snapshot();
     // collect fully-selected triangles
     const selTris = [];
     for (let i = 0; i < this.idx.length; i += 3) {
@@ -178,6 +192,7 @@ class EditableMesh {
   }
 
   subdivide() {
+    this.snapshot();
     const newIdx = []; const edgeMid = new Map();
     const mid = (a, b) => {
       const k = `${Math.min(a,b)}_${Math.max(a,b)}`;
@@ -243,6 +258,7 @@ canvas.addEventListener('mousedown', e => {
   const cd = new THREE.Vector3(); state.camera.getWorldDirection(cd);
   vdrag.plane.setFromNormalAndCoplanarPoint(cd, vp);
   vdrag.rc.ray.intersectPlane(vdrag.plane, vdrag.last);
+  state.editMesh.snapshot();
   vdrag.on = true; state.editDragging = true;
   e.stopPropagation();
 });
@@ -413,41 +429,52 @@ settingsOverlay.addEventListener('click', e => {
 // ══════════════════════════════════════════════════════
 //  AI SYSTEM PROMPTS
 // ══════════════════════════════════════════════════════
-const SYS_GENERATE = `You are a 3D CAD model generator. Convert ANY description — engineering, food, animals, objects, fantasy — into a Three.js JSON model. Return ONLY raw JSON, no markdown, no explanation.
+const SYS_GENERATE = `You are a 3D model generator. Output ONLY a raw JSON object — no markdown, no code fences, no explanation.
 
-Available component types and their parameters:
-- box:        width, height, depth
-- cylinder:   radiusTop, radiusBottom, height, radialSegments  (set radiusTop≠radiusBottom for tapers/cones)
-- sphere:     radius, widthSegments, heightSegments
-- torus:      radius, tube, radialSegments, tubularSegments
-- torusKnot:  radius, tube, p, q
-- icosahedron: radius, detail
-- cone:       radius, height, radialSegments
-- octahedron: radius
+SCHEMA:
+{"name":"...","description":"...","components":[{"id":"c1","type":"box","label":"...","position":[x,y,z],"rotation":[rx,ry,rz],"color":"#hex","parameters":{...}}],"units":"meters"}
 
-JSON format:
-{"name":"...","description":"...","components":[{"id":"c1","type":"sphere","label":"Frosting","position":[0,1.2,0],"rotation":[0,0,0],"color":"#f9a8d4","parameters":{"radius":0.9,"widthSegments":16,"heightSegments":12}}],"units":"meters"}
+TYPES & PARAMETERS:
+box → width, height, depth
+cylinder → radiusTop, radiusBottom, height, radialSegments
+sphere → radius, widthSegments, heightSegments
+cone → radius, height, radialSegments
+torus → radius, tube, radialSegments, tubularSegments
+icosahedron → radius, detail
+torusKnot → radius, tube, p, q
 
-SHAPE-BUILDING RULES:
-- Build EVERY object from multiple overlapping/stacked primitives
-- Cupcake = cylinder(wrapper) + wide flat cylinder(cake top) + large sphere(frosting dome) + tiny spheres(sprinkles) + small sphere(cherry)
-- Tree = cone(canopy) + cylinder(trunk); House = box(walls) + box(roof rotated 45°) + box(door) + box(chimney)
-- Car = box(body) + 4 cylinders(wheels) + box(cabin); Human = sphere(head) + box(torso) + 4 cylinders(limbs)
-- Spread components so they TOUCH or OVERLAP — never float apart
-- Stack vertically: position y=0 at base, build upward
+POSITIONING RULE — the Y axis is vertical, y=0 is the ground:
+- A cylinder with height H centered at y = H/2 sits exactly on the ground
+- Stack parts: next piece sits at y = (previous_top) + (new_height/2)
+- Example: cylinder h=1.0 at y=0.5 → its top is at y=1.0 → next piece center at y=1.0+(next_h/2)
 
-POSITIONING:
-- Center the whole assembly around origin
-- If a cupcake wrapper is cylinder height=1.2 at y=0, the cake top sits at y=0.7, frosting dome at y=1.4
-- All positions are world-space centers of each primitive
+WORKED EXAMPLE — cupcake:
+wrapper: cylinder radiusTop=0.65 radiusBottom=0.5 height=1.0 → center y=0.5 (bottom=0, top=1.0)
+cake:    cylinder radiusTop=0.7 radiusBottom=0.65 height=0.25 → center y=1.125 (bottom=1.0, top=1.25)
+frosting:sphere radius=0.7 → center y=1.25+0.7=1.95 (sits on cake top)
+cherry:  sphere radius=0.15 → center y=1.95+0.7+0.15=2.8 (on top of frosting)
+{"name":"Cupcake","description":"A cupcake with frosting","components":[
+{"id":"wrap","type":"cylinder","label":"Wrapper","position":[0,0.5,0],"rotation":[0,0,0],"color":"#d97706","parameters":{"radiusTop":0.65,"radiusBottom":0.5,"height":1.0,"radialSegments":12}},
+{"id":"cake","type":"cylinder","label":"Cake","position":[0,1.125,0],"rotation":[0,0,0],"color":"#92400e","parameters":{"radiusTop":0.7,"radiusBottom":0.65,"height":0.25,"radialSegments":12}},
+{"id":"frost","type":"sphere","label":"Frosting","position":[0,1.95,0],"rotation":[0,0,0],"color":"#fbcfe8","parameters":{"radius":0.7,"widthSegments":12,"heightSegments":10}},
+{"id":"cherry","type":"sphere","label":"Cherry","position":[0,2.8,0],"rotation":[0,0,0],"color":"#dc2626","parameters":{"radius":0.15,"widthSegments":8,"heightSegments":6}}
+],"units":"meters"}
 
-COLORS — pick vivid, realistic colors for the object type:
-- Food/organic: pinks #f9a8d4, browns #92400e, creams #fef3c7, reds #ef4444, greens #22c55e
-- Metal/steel: #6b7280 #5b8def #93c5fd
-- Wood: #92400e #a16207
-- Plastic/bright: #f59e0b #7c3aed #22d3ee #ef4444
+MORE EXAMPLES:
+- Tree: cone(canopy, green) at top + cylinder(trunk, brown) below
+- House: box(walls) + box(roof, rotated 45° on Z) + box(door) + box(chimney on top-side)
+- Rocket: cylinder(body) + cone(nose on top) + 4 fins(thin boxes, rotated 90° apart) + cone(nozzle inverted below)
+- Person: sphere(head) + box(torso) + 2 cylinders(arms, rotated 90°) + 2 cylinders(legs)
+- Car: wide box(body) + smaller box(cabin on top) + 4 cylinders(wheels, rotated 90° on Z, at corners)
+- Chair: box(seat) + box(back, tall, behind seat) + 4 cylinders(legs at corners below seat)
 
-Use 5–14 components. Do NOT wrap in markdown fences.`;
+COLOR GUIDE — use realistic colors:
+Food: #d97706 caramel, #92400e chocolate, #fbcfe8 pink frosting, #dc2626 red, #22c55e green
+Metal: #6b7280 steel, #5b8def blue-steel, #f59e0b gold
+Wood: #92400e dark wood, #a16207 light wood
+Nature: #15803d forest, #854d0e bark, #bef264 lime
+
+Always: center whole model vertically around y=0 after building. Use 5–12 components. No markdown.`;
 
 const SYS_EDIT = `You are a 3D CAD model editor for Brahma.
 You receive the current model JSON and an edit instruction.
@@ -972,33 +999,23 @@ initHomeCanvas();
 //  EDIT MODE UI WIRING
 // ══════════════════════════════════════════════════════
 document.getElementById('vp-tab').addEventListener('click', toggleEditMode);
-
-document.getElementById('eb-selall').addEventListener('click', () => {
-  state.editMesh?.selectAll();
-});
-document.getElementById('eb-desel').addEventListener('click', () => {
-  state.editMesh?.deselectAll();
-});
-document.getElementById('eb-extrude').addEventListener('click', () => {
-  state.editMesh?.extrude(0.4);
-});
-document.getElementById('eb-subdivide').addEventListener('click', () => {
-  state.editMesh?.subdivide();
-});
+document.getElementById('eb-exit').addEventListener('click', () => { if (state.editActive) toggleEditMode(); });
+document.getElementById('eb-undo').addEventListener('click', () => state.editMesh?.undo());
+document.getElementById('eb-selall').addEventListener('click', () => state.editMesh?.selectAll());
+document.getElementById('eb-desel').addEventListener('click', () => state.editMesh?.deselectAll());
+document.getElementById('eb-extrude').addEventListener('click', () => state.editMesh?.extrude(0.4));
+document.getElementById('eb-subdivide').addEventListener('click', () => state.editMesh?.subdivide());
 
 document.addEventListener('keydown', e => {
-  if (!state.editActive || !state.editMesh) return;
   if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  if (e.key === 'Tab' && document.getElementById('workspace-page').classList.contains('active')) {
+    e.preventDefault(); if (state.editMesh) toggleEditMode();
+  }
+  if (!state.editActive || !state.editMesh) return;
+  if (e.key === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); state.editMesh.undo(); }
   if (e.key === 'a' || e.key === 'A') {
-    if (state.editMesh.sel.size === state.editMesh.pos.length / 3) state.editMesh.deselectAll();
-    else state.editMesh.selectAll();
+    state.editMesh.sel.size === state.editMesh.pos.length/3 ? state.editMesh.deselectAll() : state.editMesh.selectAll();
   }
   if (e.key === 'e' || e.key === 'E') state.editMesh.extrude(0.4);
-  if (e.key === 'Tab') { e.preventDefault(); toggleEditMode(); }
-  if (e.key === 'Escape') { state.editMesh.deselectAll(); }
-});
-document.addEventListener('keydown', e => {
-  if (e.key === 'Tab' && state.editMesh && document.getElementById('workspace-page').classList.contains('active')) {
-    e.preventDefault(); toggleEditMode();
-  }
+  if (e.key === 'Escape') state.editMesh.deselectAll();
 });

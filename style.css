@@ -531,3 +531,6 @@ body {
   flex-shrink: 0;
 }
 .edit-hint:first-of-type { margin-left: auto; }
+.edit-btn--exit { color: #f87171; border-color: #f87171; }
+.edit-btn--exit:hover { color: #fff; border-color: #f87171; background: rgba(248,113,113,.18); }
+.edit-btn--undo:hover { color: #f59e0b; border-color: #f59e0b; background: rgba(245,158,11,.08); }
