@@ -203,7 +203,22 @@ class EditableMesh {
   }
 }
 
-// ── Vertex drag state ─────────────────────────────────
+// ── DOM refs ──────────────────────────────────────────
+const homePage        = document.getElementById('home-page');
+const workspacePage   = document.getElementById('workspace-page');
+const newProjectBtn   = document.getElementById('new-project-btn');
+const backBtn         = document.getElementById('back-btn');
+const projectNameEl   = document.getElementById('project-name');
+const recentSection   = document.getElementById('recent-section');
+const recentList      = document.getElementById('recent-list');
+const tabs            = document.querySelectorAll('.tab');
+const tabContents     = document.querySelectorAll('.tab-content');
+const canvas          = document.getElementById('three-canvas');
+const settingsBtn     = document.getElementById('settings-btn');
+const settingsOverlay = document.getElementById('settings-overlay');
+const vpModelName     = document.getElementById('vp-model-name');
+
+// ── Vertex drag state (needs canvas, must come after DOM refs) ──
 const vdrag = {
   on: false, plane: new THREE.Plane(), last: new THREE.Vector3(),
   rc: new THREE.Raycaster(),
@@ -243,21 +258,6 @@ canvas.addEventListener('mousemove', e => {
   e.stopPropagation();
 });
 window.addEventListener('mouseup', () => { vdrag.on = false; state.editDragging = false; });
-
-// ── DOM refs ──────────────────────────────────────────
-const homePage        = document.getElementById('home-page');
-const workspacePage   = document.getElementById('workspace-page');
-const newProjectBtn   = document.getElementById('new-project-btn');
-const backBtn         = document.getElementById('back-btn');
-const projectNameEl   = document.getElementById('project-name');
-const recentSection   = document.getElementById('recent-section');
-const recentList      = document.getElementById('recent-list');
-const tabs            = document.querySelectorAll('.tab');
-const tabContents     = document.querySelectorAll('.tab-content');
-const canvas          = document.getElementById('three-canvas');
-const settingsBtn     = document.getElementById('settings-btn');
-const settingsOverlay = document.getElementById('settings-overlay');
-const vpModelName     = document.getElementById('vp-model-name');
 
 // ══════════════════════════════════════════════════════
 //  NAVIGATION
