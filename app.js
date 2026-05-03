@@ -179,41 +179,41 @@ settingsOverlay.addEventListener('click', e => {
 // ══════════════════════════════════════════════════════
 //  AI SYSTEM PROMPTS
 // ══════════════════════════════════════════════════════
-const SYS_GENERATE = `You are a 3D CAD model generator for Brahma, an AI engineering application.
-Convert natural language descriptions into Three.js-renderable 3D model JSON.
-Return ONLY valid raw JSON — no markdown, no code blocks, no explanation whatsoever.
+const SYS_GENERATE = `You are a 3D CAD model generator. Convert ANY description — engineering, food, animals, objects, fantasy — into a Three.js JSON model. Return ONLY raw JSON, no markdown, no explanation.
 
-JSON Schema:
-{
-  "name": "model name",
-  "description": "brief description",
-  "components": [
-    {
-      "id": "unique_id",
-      "type": "box|cylinder|sphere|torus|torusKnot|icosahedron|cone|octahedron",
-      "label": "Component Name",
-      "position": [x, y, z],
-      "rotation": [rx_degrees, ry_degrees, rz_degrees],
-      "color": "#hexcolor",
-      "parameters": {
-        "width": n, "height": n, "depth": n,
-        "radius": n, "radiusTop": n, "radiusBottom": n,
-        "tube": n, "p": n, "q": n, "detail": n
-      }
-    }
-  ],
-  "units": "meters"
-}
+Available component types and their parameters:
+- box:        width, height, depth
+- cylinder:   radiusTop, radiusBottom, height, radialSegments  (set radiusTop≠radiusBottom for tapers/cones)
+- sphere:     radius, widthSegments, heightSegments
+- torus:      radius, tube, radialSegments, tubularSegments
+- torusKnot:  radius, tube, p, q
+- icosahedron: radius, detail
+- cone:       radius, height, radialSegments
+- octahedron: radius
 
-Rules:
-- Use 3 to 14 components to represent the object
-- Center the full assembly around origin (0,0,0)
-- Use realistic engineering proportions; cap large models (bridge deck = 20 units wide max)
-- Blues/grays for structural steel: #5b8def #6b7280 #93c5fd
-- Teals/greens for mechanical/moving parts: #22d3ee #34d399
-- Purples for electrical or feature elements: #818cf8 #7c3aed
-- Gold for highlights/joints: #f59e0b
-- Do NOT wrap in markdown fences`;
+JSON format:
+{"name":"...","description":"...","components":[{"id":"c1","type":"sphere","label":"Frosting","position":[0,1.2,0],"rotation":[0,0,0],"color":"#f9a8d4","parameters":{"radius":0.9,"widthSegments":16,"heightSegments":12}}],"units":"meters"}
+
+SHAPE-BUILDING RULES:
+- Build EVERY object from multiple overlapping/stacked primitives
+- Cupcake = cylinder(wrapper) + wide flat cylinder(cake top) + large sphere(frosting dome) + tiny spheres(sprinkles) + small sphere(cherry)
+- Tree = cone(canopy) + cylinder(trunk); House = box(walls) + box(roof rotated 45°) + box(door) + box(chimney)
+- Car = box(body) + 4 cylinders(wheels) + box(cabin); Human = sphere(head) + box(torso) + 4 cylinders(limbs)
+- Spread components so they TOUCH or OVERLAP — never float apart
+- Stack vertically: position y=0 at base, build upward
+
+POSITIONING:
+- Center the whole assembly around origin
+- If a cupcake wrapper is cylinder height=1.2 at y=0, the cake top sits at y=0.7, frosting dome at y=1.4
+- All positions are world-space centers of each primitive
+
+COLORS — pick vivid, realistic colors for the object type:
+- Food/organic: pinks #f9a8d4, browns #92400e, creams #fef3c7, reds #ef4444, greens #22c55e
+- Metal/steel: #6b7280 #5b8def #93c5fd
+- Wood: #92400e #a16207
+- Plastic/bright: #f59e0b #7c3aed #22d3ee #ef4444
+
+Use 5–14 components. Do NOT wrap in markdown fences.`;
 
 const SYS_EDIT = `You are a 3D CAD model editor for Brahma.
 You receive the current model JSON and an edit instruction.
