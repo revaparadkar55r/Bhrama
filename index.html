@@ -111,6 +111,17 @@
       <!-- 3D VIEWPORT -->
       <div class="viewport" id="viewport">
         <canvas id="three-canvas"></canvas>
+        <div class="edit-toolbar" id="edit-toolbar">
+          <span class="edit-mode-label">✦ EDIT MODE</span>
+          <div class="edit-divider"></div>
+          <button class="edit-btn" id="eb-selall">Select All <kbd>A</kbd></button>
+          <button class="edit-btn" id="eb-desel">Deselect <kbd>Esc</kbd></button>
+          <button class="edit-btn" id="eb-extrude">Extrude <kbd>E</kbd></button>
+          <button class="edit-btn" id="eb-subdivide">Subdivide</button>
+          <div class="edit-divider"></div>
+          <span class="edit-hint">Click vertex · Shift+click multi-select · Drag to move</span>
+          <span class="edit-hint" style="margin-left:0">Tab = exit edit mode</span>
+        </div>
         <div class="vp-overlay">
           <div class="vp-top">
             <span class="vp-label">3D Viewport</span>
@@ -120,6 +131,7 @@
             <button class="vp-btn" id="vp-perspective">Persp</button>
             <button class="vp-btn" id="vp-top">Top</button>
             <button class="vp-btn" id="vp-front">Front</button>
+            <button class="vp-btn vp-btn--tab" id="vp-tab" style="display:none">⬜ Edit Mesh</button>
           </div>
         </div>
       </div>

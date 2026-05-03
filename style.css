@@ -471,3 +471,63 @@ body {
   transition: color .2s, border-color .2s;
 }
 .vp-btn:hover { color: var(--accent); border-color: var(--accent); }
+.vp-btn--tab.active { color: #f59e0b; border-color: #f59e0b; background: rgba(245,158,11,.12); }
+
+/* ── Edit toolbar ── */
+.edit-toolbar {
+  display: none;
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 44px;
+  background: rgba(7,7,14,.92);
+  border-top: 1px solid #f59e0b44;
+  align-items: center;
+  padding: 0 1rem;
+  gap: .55rem;
+  backdrop-filter: blur(10px);
+  z-index: 10;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.edit-toolbar.visible { display: flex; }
+.edit-mode-label {
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .16em;
+  color: #f59e0b;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.edit-divider { width: 1px; height: 18px; background: var(--border); margin: 0 .15rem; flex-shrink: 0; }
+.edit-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  padding: .22rem .65rem;
+  border-radius: 5px;
+  font-size: .74rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.edit-btn:hover { color: var(--accent); border-color: var(--accent); background: rgba(91,141,239,.08); }
+.edit-btn kbd {
+  font-size: .62rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: .04rem .28rem;
+  margin-left: .3rem;
+  color: var(--dim);
+  font-family: monospace;
+}
+.edit-hint {
+  font-size: .65rem;
+  color: var(--dim);
+  font-style: italic;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.edit-hint:first-of-type { margin-left: auto; }

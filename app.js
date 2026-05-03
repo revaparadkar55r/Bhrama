@@ -2,13 +2,247 @@
 const state = {
   projects:      JSON.parse(localStorage.getItem('brahma_projects') || '[]'),
   current:       null,
-  currentModel:  null,   // model JSON from AI
-  currentGroup:  null,   // Three.js group in workspace scene
+  currentModel:  null,
+  currentGroup:  null,
   renderer:      null,
   animId:        null,
   scene:         null,
+  camera:        null,
   spherical:     { theta: 0.8, phi: 0.62, radius: 12 },
+  editMesh:      null,
+  editActive:    false,
+  editDragging:  false,
 };
+
+// ══════════════════════════════════════════════════════
+//  EDITABLE MESH
+// ══════════════════════════════════════════════════════
+class EditableMesh {
+  constructor() {
+    this.pos   = [];        // flat [x,y,z, x,y,z, ...]
+    this.idx   = [];        // flat triangle indices
+    this.sel   = new Set(); // selected vertex indices
+    this.group = new THREE.Group();
+    this.solid = null;
+    this.wire  = null;
+    this.pts   = null;
+    this.inEdit = false;
+  }
+
+  loadGroup(src) {
+    this.pos = []; this.idx = [];
+    src.updateMatrixWorld(true);
+    src.traverse(ch => {
+      if (!(ch instanceof THREE.Mesh)) return;
+      const g   = ch.geometry;
+      const pa  = g.attributes.position;
+      const base = this.pos.length / 3;
+      for (let i = 0; i < pa.count; i++) {
+        const v = new THREE.Vector3(pa.getX(i), pa.getY(i), pa.getZ(i));
+        v.applyMatrix4(ch.matrixWorld);
+        this.pos.push(v.x, v.y, v.z);
+      }
+      if (g.index) {
+        const ia = g.index.array;
+        for (let i = 0; i < ia.length; i++) this.idx.push(ia[i] + base);
+      } else {
+        for (let i = 0; i < pa.count; i++) this.idx.push(i + base);
+      }
+    });
+    this._rebuild();
+  }
+
+  _geo() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([...this.pos], 3));
+    g.setIndex([...this.idx]);
+    g.computeVertexNormals();
+    return g;
+  }
+
+  _rebuild() {
+    this.group.clear();
+    this.solid = this.wire = this.pts = null;
+    const g = this._geo();
+    this.solid = new THREE.Mesh(g, new THREE.MeshPhongMaterial({
+      color: 0x5b8def, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+    }));
+    this.group.add(this.solid);
+    this._refreshWire();
+    if (this.inEdit) this._refreshPts();
+  }
+
+  _refreshWire() {
+    if (this.wire) this.group.remove(this.wire);
+    if (!this.solid) return;
+    this.wire = new THREE.LineSegments(
+      new THREE.EdgesGeometry(this.solid.geometry, 20),
+      new THREE.LineBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: this.inEdit ? 1 : 0.45 })
+    );
+    this.group.add(this.wire);
+  }
+
+  _refreshPts() {
+    if (this.pts) this.group.remove(this.pts);
+    if (!this.inEdit) return;
+    const n  = this.pos.length / 3;
+    const pa = new Float32Array(this.pos);
+    const ca = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      if (this.sel.has(i)) { ca[i*3]=1; ca[i*3+1]=0.6; ca[i*3+2]=0; }
+      else                  { ca[i*3]=0.85; ca[i*3+1]=0.9; ca[i*3+2]=1; }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pa, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(ca, 3));
+    this.pts = new THREE.Points(geo, new THREE.PointsMaterial({
+      size: 0.11, vertexColors: true, depthTest: false, sizeAttenuation: true,
+    }));
+    this.group.add(this.pts);
+  }
+
+  _syncGeo() {
+    const pa = this.solid.geometry.attributes.position;
+    for (let i = 0; i < this.pos.length; i++) pa.array[i] = this.pos[i];
+    pa.needsUpdate = true;
+    this.solid.geometry.computeVertexNormals();
+    this._refreshWire();
+    this._refreshPts();
+  }
+
+  enterEdit() { this.inEdit = true;  this._refreshWire(); this._refreshPts(); }
+  exitEdit()  { this.inEdit = false; this.sel.clear(); this._refreshWire(); this._refreshPts(); }
+
+  pick(rc) {
+    if (!this.pts) return -1;
+    rc.params.Points = { threshold: 0.13 };
+    const hits = rc.intersectObject(this.pts);
+    return hits.length ? hits[0].index : -1;
+  }
+
+  clickSelect(idx, shift) {
+    if (!shift) this.sel.clear();
+    this.sel.has(idx) ? this.sel.delete(idx) : this.sel.add(idx);
+    this._refreshPts();
+  }
+
+  selectAll()   { const n=this.pos.length/3; for(let i=0;i<n;i++) this.sel.add(i); this._refreshPts(); }
+  deselectAll() { this.sel.clear(); this._refreshPts(); }
+
+  moveSelected(dx, dy, dz) {
+    this.sel.forEach(i => { this.pos[i*3]+=dx; this.pos[i*3+1]+=dy; this.pos[i*3+2]+=dz; });
+    this._syncGeo();
+  }
+
+  extrude(amount = 0.4) {
+    if (!this.sel.size) return;
+    // collect fully-selected triangles
+    const selTris = [];
+    for (let i = 0; i < this.idx.length; i += 3) {
+      const [a,b,c] = [this.idx[i], this.idx[i+1], this.idx[i+2]];
+      if (this.sel.has(a) && this.sel.has(b) && this.sel.has(c)) selTris.push([a,b,c]);
+    }
+    // average outward normal
+    let nx=0,ny=0,nz=0;
+    selTris.forEach(([a,b,c]) => {
+      const [ax,ay,az]=[this.pos[a*3],this.pos[a*3+1],this.pos[a*3+2]];
+      const [bx,by,bz]=[this.pos[b*3],this.pos[b*3+1],this.pos[b*3+2]];
+      const [cx,cy,cz]=[this.pos[c*3],this.pos[c*3+1],this.pos[c*3+2]];
+      const ux=bx-ax,uy=by-ay,uz=bz-az, vx=cx-ax,vy=cy-ay,vz=cz-az;
+      nx+=uy*vz-uz*vy; ny+=uz*vx-ux*vz; nz+=ux*vy-uy*vx;
+    });
+    if (selTris.length === 0) { this.moveSelected(0, amount, 0); return; }
+    const l=Math.sqrt(nx*nx+ny*ny+nz*nz)||1; nx/=l; ny/=l; nz/=l;
+    // duplicate selected verts offset by normal
+    const o2n = new Map();
+    this.sel.forEach(i => {
+      const ni = this.pos.length/3; o2n.set(i, ni);
+      this.pos.push(this.pos[i*3]+nx*amount, this.pos[i*3+1]+ny*amount, this.pos[i*3+2]+nz*amount);
+    });
+    // top faces
+    selTris.forEach(([a,b,c]) => this.idx.push(o2n.get(a), o2n.get(b), o2n.get(c)));
+    // side faces on boundary edges
+    const eCnt = new Map();
+    selTris.forEach(([a,b,c]) => {
+      [[a,b],[b,c],[c,a]].forEach(([u,v]) => {
+        const k=`${Math.min(u,v)}_${Math.max(u,v)}`; eCnt.set(k,(eCnt.get(k)||0)+1);
+      });
+    });
+    eCnt.forEach((cnt,k) => {
+      if (cnt!==1) return;
+      const [u,v]=k.split('_').map(Number); const nu=o2n.get(u),nv=o2n.get(v);
+      this.idx.push(u,v,nv, u,nv,nu);
+    });
+    this.sel.clear(); o2n.forEach(ni=>this.sel.add(ni));
+    this._rebuild();
+  }
+
+  subdivide() {
+    const newIdx = []; const edgeMid = new Map();
+    const mid = (a, b) => {
+      const k = `${Math.min(a,b)}_${Math.max(a,b)}`;
+      if (!edgeMid.has(k)) {
+        const ni = this.pos.length/3;
+        edgeMid.set(k, ni);
+        this.pos.push(
+          (this.pos[a*3]+this.pos[b*3])/2,
+          (this.pos[a*3+1]+this.pos[b*3+1])/2,
+          (this.pos[a*3+2]+this.pos[b*3+2])/2
+        );
+      }
+      return edgeMid.get(k);
+    };
+    for (let i=0;i<this.idx.length;i+=3) {
+      const [a,b,c]=[this.idx[i],this.idx[i+1],this.idx[i+2]];
+      const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);
+      newIdx.push(a,ab,ca, ab,b,bc, bc,c,ca, ab,bc,ca);
+    }
+    this.idx = newIdx;
+    this.sel.clear();
+    this._rebuild();
+  }
+}
+
+// ── Vertex drag state ─────────────────────────────────
+const vdrag = {
+  on: false, plane: new THREE.Plane(), last: new THREE.Vector3(),
+  rc: new THREE.Raycaster(),
+};
+function mouseNDC(e) {
+  const r = canvas.getBoundingClientRect();
+  return new THREE.Vector2(
+    ((e.clientX - r.left) / r.width)  * 2 - 1,
+    -((e.clientY - r.top)  / r.height) * 2 + 1
+  );
+}
+canvas.addEventListener('mousedown', e => {
+  if (!state.editActive || !state.editMesh || !state.camera) return;
+  const ndc = mouseNDC(e);
+  vdrag.rc.setFromCamera(ndc, state.camera);
+  const idx = state.editMesh.pick(vdrag.rc);
+  if (idx < 0) { if (!e.shiftKey) state.editMesh.deselectAll(); return; }
+  state.editMesh.clickSelect(idx, e.shiftKey);
+  const vp = new THREE.Vector3(
+    state.editMesh.pos[idx*3], state.editMesh.pos[idx*3+1], state.editMesh.pos[idx*3+2]
+  );
+  const cd = new THREE.Vector3(); state.camera.getWorldDirection(cd);
+  vdrag.plane.setFromNormalAndCoplanarPoint(cd, vp);
+  vdrag.rc.ray.intersectPlane(vdrag.plane, vdrag.last);
+  vdrag.on = true; state.editDragging = true;
+  e.stopPropagation();
+});
+canvas.addEventListener('mousemove', e => {
+  if (!vdrag.on || !state.editMesh || !state.camera) return;
+  const ndc = mouseNDC(e); const rc2 = new THREE.Raycaster();
+  rc2.setFromCamera(ndc, state.camera);
+  const cur = new THREE.Vector3();
+  if (rc2.ray.intersectPlane(vdrag.plane, cur)) {
+    state.editMesh.moveSelected(cur.x-vdrag.last.x, cur.y-vdrag.last.y, cur.z-vdrag.last.z);
+    vdrag.last.copy(cur);
+  }
+  e.stopPropagation();
+});
+window.addEventListener('mouseup', () => { vdrag.on = false; state.editDragging = false; });
 
 // ── DOM refs ──────────────────────────────────────────
 const homePage        = document.getElementById('home-page');
@@ -413,8 +647,48 @@ function renderModel(modelJSON) {
 
   state.scene.add(group);
   state.currentGroup = group;
-
   if (vpModelName) vpModelName.textContent = modelJSON.name || '';
+
+  // Build editable mesh from result
+  buildEditMesh(group);
+  document.getElementById('vp-tab').style.display = 'inline-block';
+}
+
+function buildEditMesh(srcGroup) {
+  // Exit any active edit mode first
+  if (state.editActive) toggleEditMode();
+  if (state.editMesh) {
+    state.scene.remove(state.editMesh.group);
+    state.editMesh = null;
+  }
+  const em = new EditableMesh();
+  em.loadGroup(srcGroup);
+  state.editMesh = em;
+}
+
+function toggleEditMode() {
+  if (!state.editMesh) return;
+  state.editActive = !state.editActive;
+  const btn     = document.getElementById('vp-tab');
+  const toolbar = document.getElementById('edit-toolbar');
+
+  if (state.editActive) {
+    // Hide primitive group, show editable mesh
+    if (state.currentGroup) state.currentGroup.visible = false;
+    state.scene.remove(state.editMesh.group); // remove if already added
+    state.scene.add(state.editMesh.group);
+    state.editMesh.enterEdit();
+    btn.textContent = '⬜ Object Mode';
+    btn.classList.add('active');
+    toolbar.classList.add('visible');
+  } else {
+    state.editMesh.exitEdit();
+    state.scene.remove(state.editMesh.group);
+    if (state.currentGroup) state.currentGroup.visible = true;
+    btn.textContent = '⬜ Edit Mesh';
+    btn.classList.remove('active');
+    toolbar.classList.remove('visible');
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -431,6 +705,7 @@ function initThree() {
   state.scene    = scene;
 
   const camera   = new THREE.PerspectiveCamera(50, W / H, 0.1, 200);
+  state.camera   = camera;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(W, H);
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -468,10 +743,13 @@ function initThree() {
   applyCamera();
 
   let drag = false, prev = { x: 0, y: 0 };
-  canvas.addEventListener('mousedown',  e => { drag = true; prev = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('mousedown',  e => {
+    if (state.editActive) return;
+    drag = true; prev = { x: e.clientX, y: e.clientY };
+  });
   window.addEventListener('mouseup',    ()  => { drag = false; });
   canvas.addEventListener('mousemove',  e  => {
-    if (!drag) return;
+    if (state.editDragging || !drag) return;
     sp.theta -= (e.clientX - prev.x) * 0.005;
     sp.phi    = Math.max(.12, Math.min(Math.PI - .12, sp.phi + (e.clientY - prev.y) * 0.005));
     prev = { x: e.clientX, y: e.clientY };
@@ -689,3 +967,38 @@ function initHomeCanvas() {
 // ══════════════════════════════════════════════════════
 renderRecentProjects();
 initHomeCanvas();
+
+// ══════════════════════════════════════════════════════
+//  EDIT MODE UI WIRING
+// ══════════════════════════════════════════════════════
+document.getElementById('vp-tab').addEventListener('click', toggleEditMode);
+
+document.getElementById('eb-selall').addEventListener('click', () => {
+  state.editMesh?.selectAll();
+});
+document.getElementById('eb-desel').addEventListener('click', () => {
+  state.editMesh?.deselectAll();
+});
+document.getElementById('eb-extrude').addEventListener('click', () => {
+  state.editMesh?.extrude(0.4);
+});
+document.getElementById('eb-subdivide').addEventListener('click', () => {
+  state.editMesh?.subdivide();
+});
+
+document.addEventListener('keydown', e => {
+  if (!state.editActive || !state.editMesh) return;
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+  if (e.key === 'a' || e.key === 'A') {
+    if (state.editMesh.sel.size === state.editMesh.pos.length / 3) state.editMesh.deselectAll();
+    else state.editMesh.selectAll();
+  }
+  if (e.key === 'e' || e.key === 'E') state.editMesh.extrude(0.4);
+  if (e.key === 'Tab') { e.preventDefault(); toggleEditMode(); }
+  if (e.key === 'Escape') { state.editMesh.deselectAll(); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Tab' && state.editMesh && document.getElementById('workspace-page').classList.contains('active')) {
+    e.preventDefault(); toggleEditMode();
+  }
+});
