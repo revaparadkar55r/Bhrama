@@ -3,16 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bhrama</title>
+  <title>Brahma</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- HOME PAGE -->
+  <!-- ═══════════════ HOME PAGE ═══════════════ -->
   <div id="home-page" class="page active">
     <div class="home-bg"></div>
+    <canvas id="home-canvas" class="home-canvas"></canvas>
+
+    <button class="settings-btn" id="settings-btn" title="API Settings">⚙</button>
+
     <div class="home-content">
-      <h1 class="title">Bhrama</h1>
+      <img src="brahma-logo.jpg" class="logo-img" alt="Brahma" />
+      <h1 class="title">Brahma</h1>
       <p class="subtitle">AI-Powered CAD &amp; Real-World Physics Modeling</p>
       <button class="btn-primary" id="new-project-btn">
         <span class="btn-icon">+</span> New Project
@@ -22,18 +27,51 @@
         <ul class="recent-list" id="recent-list"></ul>
       </div>
     </div>
+
+    <!-- Settings overlay -->
+    <div class="settings-overlay" id="settings-overlay">
+      <div class="settings-panel">
+        <h3 class="settings-title">API Settings</h3>
+        <label class="settings-label">Groq API Key (free — no credit card needed)</label>
+        <input type="password" id="api-key-input" class="settings-input"
+               placeholder="gsk_…" autocomplete="off"/>
+        <p class="settings-note">
+          Get a free key at <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> — sign up, click "Create API Key", paste it here.<br/>
+          Key is stored only in your browser and sent to your local server.
+        </p>
+        <div class="settings-actions">
+          <button class="btn-test-key" id="test-api-key">Test Key</button>
+          <button class="btn-save-key" id="save-api-key">Save</button>
+          <button class="btn-cancel"   id="close-settings">Cancel</button>
+        </div>
+        <div id="key-test-result" class="key-test-result"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- WORKSPACE PAGE -->
+  <!-- ═══════════════ WORKSPACE PAGE ═══════════════ -->
   <div id="workspace-page" class="page">
     <header class="ws-header">
+
+      <!-- Brand mark -->
+      <div class="ws-brand">
+        <img src="brahma-logo.jpg" class="logo-img-sm" alt="Brahma"/>
+        <span class="ws-brand-name">Brahma</span>
+      </div>
+
       <button class="back-btn" id="back-btn">← Back</button>
       <span class="project-name" id="project-name">Untitled</span>
+
       <nav class="tab-bar">
         <button class="tab active" data-tab="generate">Generate</button>
         <button class="tab"        data-tab="edit">Edit</button>
-        <button class="tab"        data-tab="apply">Apply</button>
+        <button class="tab"        data-tab="simulate">Simulate</button>
       </nav>
+
+      <div class="ws-actions">
+        <button class="btn-ws-action" id="export-btn">↓ Export</button>
+        <button class="btn-ws-action btn-danger" id="delete-project-btn">⌫ Delete</button>
+      </div>
     </header>
 
     <div class="ws-body">
@@ -43,7 +81,7 @@
 
         <div class="tab-content active" id="tab-generate">
           <h3 class="panel-title">Generate</h3>
-          <p class="panel-desc">Describe what you want to create. Bhrama will build a physics-accurate CAD model from your prompt.</p>
+          <p class="panel-desc">Describe what you want to create. Brahma will build a physics-accurate CAD model from your prompt.</p>
           <textarea class="ai-input" id="input-generate"
             placeholder="e.g. A steel I-beam bridge 50 m long, rated for 200 tons, with suspension cables…"></textarea>
           <button class="btn-action" data-action="generate">Generate Model</button>
@@ -59,13 +97,13 @@
           <div class="status-bar" id="status-edit"></div>
         </div>
 
-        <div class="tab-content" id="tab-apply">
-          <h3 class="panel-title">Apply</h3>
+        <div class="tab-content" id="tab-simulate">
+          <h3 class="panel-title">Simulate</h3>
           <p class="panel-desc">Define real-world conditions and physics laws to simulate against this model.</p>
-          <textarea class="ai-input" id="input-apply"
+          <textarea class="ai-input" id="input-simulate"
             placeholder="e.g. Wind load 120 km/h from the west, seismic activity Richter 6.5…"></textarea>
-          <button class="btn-action" data-action="apply">Run Simulation</button>
-          <div class="status-bar" id="status-apply"></div>
+          <button class="btn-action" data-action="simulate">Run Simulation</button>
+          <div class="status-bar simulate-output" id="status-simulate"></div>
         </div>
 
       </aside>
@@ -74,11 +112,14 @@
       <div class="viewport" id="viewport">
         <canvas id="three-canvas"></canvas>
         <div class="vp-overlay">
-          <span class="vp-label">3D Viewport</span>
+          <div class="vp-top">
+            <span class="vp-label">3D Viewport</span>
+            <span class="vp-model-name" id="vp-model-name"></span>
+          </div>
           <div class="vp-controls">
-            <button class="vp-btn" id="vp-perspective" title="Perspective">Persp</button>
-            <button class="vp-btn" id="vp-top"         title="Top view">Top</button>
-            <button class="vp-btn" id="vp-front"       title="Front view">Front</button>
+            <button class="vp-btn" id="vp-perspective">Persp</button>
+            <button class="vp-btn" id="vp-top">Top</button>
+            <button class="vp-btn" id="vp-front">Front</button>
           </div>
         </div>
       </div>
